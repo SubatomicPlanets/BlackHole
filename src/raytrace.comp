@@ -1,0 +1,130 @@
+#version 430
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// Images
+layout(rgba8, binding = 0) writeonly uniform image2D outputImage;
+layout(binding = 1) uniform samplerCube skyCubemap;
+
+// Uniforms
+uniform vec3 cameraPos;
+uniform vec3 cameraFront;
+uniform vec3 cameraUp;
+uniform vec3 cameraRight;
+uniform vec2 resolution;
+
+// Black hole settings
+const float M = 0.25;
+
+// Accretion disk settings
+const float DiskInner = 4.5 * M;
+const float DiskOuter = 12.6 * M;
+
+// RK4 step settings
+const float StepSize = 0.04;
+const int MaxSteps = 512;
+
+// Sky cubemap settings
+const float SkyBrightness = 4.0;
+
+vec3 getAcceleration(vec3 pos, vec3 vel) {
+    float r2 = dot(pos, pos);
+    float r = sqrt(r2);
+    
+    // Angular momentum vector
+    vec3 L = cross(pos, vel);
+    float L2 = dot(L, L);
+    
+    // Relativistic gravitational acceleration calculation
+    return (-3.0 * M * L2 / (r2 * r2 * r)) * pos;
+}
+
+void rk4Step(vec3 p, vec3 v, vec3 dx, vec3 dv, out vec3 dx2, out vec3 dv2) {
+	// A single RK4 step
+	vec3 p2 = p + 0.5 * StepSize * dx;
+	vec3 v2 = v + 0.5 * StepSize * dv;
+	dx2 = v2;
+	dv2 = getAcceleration(p2, v2);
+}
+
+void main() {
+    // Get pixel coordinates
+    ivec2 coord = ivec2(gl_GlobalInvocationID.xy);
+    if (coord.x >= resolution.x || coord.y >= resolution.y) return;
+
+	// Force black inside black hole to avoid artifacts
+	float camR = length(cameraPos);
+	if (camR < 2.0 * M) {
+		imageStore(outputImage, coord, vec4(0.0, 0.0, 0.0, 1.0));
+		return;
+	}
+
+    // Calculate normalized device coordinates ranging from -1 to 1
+    vec2 ndc = (vec2(coord) / resolution) * 2.0 - 1.0;
+    // Adjust for aspect ratio
+    ndc.x *= (resolution.x / resolution.y);
+
+    // Setup initial camera ray
+    vec3 p = cameraPos;
+    vec3 v = normalize(cameraFront + ndc.x * cameraRight + ndc.y * cameraUp);
+
+    // Test scene object (planet)
+    vec3 planetCenter = vec3(0.0, 0.0, 8.0);
+    float planetRadius = 0.5;
+
+    // Raymarching loop
+	bool hit = false;
+    vec4 pixelColor;
+    for (int i = 0; i < MaxSteps; i++) {
+        vec3 oldP = p; // Starting position
+
+        // RK4 integration
+		vec3 dx1, dv1, dx2, dv2, dx3, dv3, dx4, dv4;
+		rk4Step(p, v, vec3(0.0), vec3(0.0), dx1, dv1);
+		rk4Step(p, v, dx1, dv1, dx2, dv2);
+		rk4Step(p, v, dx2, dv2, dx3, dv3);
+		rk4Step(p, v, dx3, dv3, dx4, dv4);
+
+        // Update position and velocity vectors using weighted averages
+        p += (StepSize / 6.0) * (dx1 + 2.0 * dx2 + 2.0 * dx3 + dx4);
+        v += (StepSize / 6.0) * (dv1 + 2.0 * dv2 + 2.0 * dv3 + dv4);
+        
+        // Ensure velocity magnitude remains 1 (light speed normalization)
+        v = normalize(v);
+
+        // Setup for checks
+        float r = length(p);
+
+        // Event horizon check
+        if (r <= 2.0 * M) {
+            pixelColor = vec4(0.0, 0.0, 0.0, 1.0);
+			hit = true;
+            break;
+        }
+
+        // Sphere intersection check
+		if (length(planetCenter - p) <= planetRadius) {
+			pixelColor = vec4(0.0, 1.0, 0.0, 1.0);
+			hit = true;
+			break;
+		}
+
+		// Accretion disk check
+		if (p.y * oldP.y <= 0) {
+			float t = p.y / (oldP.y - p.y);
+			float intersectR = length(mix(oldP, p, t));
+			if (intersectR <= DiskOuter && intersectR >= DiskInner) {
+				float blend = smoothstep(DiskInner, DiskOuter, intersectR);
+				pixelColor = mix(vec4(0.95, 0.47, 0.05, 1.0), vec4(1.0, 0.72, 0.05, 1.0), blend);
+				hit = true;
+				break;
+			}
+		}
+
+        // Escape check
+        if (r > 100.0) break;
+    }
+
+    // Output
+	if (!hit) pixelColor = texture(skyCubemap, v) * SkyBrightness;
+	imageStore(outputImage, coord, pixelColor);
+}
