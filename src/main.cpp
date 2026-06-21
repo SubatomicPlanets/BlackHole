@@ -5,7 +5,7 @@
 #include <fstream>
 #include <sstream>
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
+#include <stb_image.h>
 
 // Constants
 const int render_width = 800;
@@ -90,7 +90,7 @@ int main() {
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) { return -1; }
 
 	// Compute shader setup
-	std::string computeSrc = loadStringFile("src/raytrace.comp");
+	std::string computeSrc = loadStringFile("raytrace.comp");
 	const char* computeSrcPtr = computeSrc.c_str();
 	GLuint computeShader = glCreateShader(GL_COMPUTE_SHADER);
 	glShaderSource(computeShader, 1, &computeSrcPtr, NULL);
@@ -156,7 +156,7 @@ int main() {
 	Camera camera;
 
 	// Sky cubemap
-	GLuint skyCubemap = loadVerticalCubemap("assets/sky.hdr");
+	GLuint skyCubemap = loadVerticalCubemap("sky.hdr");
 
 	// Window loop
 	double last_time = glfwGetTime();
