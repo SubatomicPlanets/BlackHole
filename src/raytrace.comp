@@ -12,6 +12,19 @@ uniform vec3 cameraUp;
 uniform vec3 cameraRight;
 uniform vec2 resolution;
 
+// Structs
+struct Planet {
+	vec3 position;
+	vec3 color;
+	float radius;
+};
+
+// Planets
+Planet planets[2] = Planet[](
+	Planet(vec3(0.0, 0.0, 8.0), vec3(0.165, 0.471, 0.259), 0.5),
+	Planet(vec3(2.0, 0.0, 7.0), vec3(0.761, 0.396, 0.259), 0.3)
+);
+
 // Black hole settings
 const float M = 0.25;
 
@@ -67,10 +80,6 @@ void main() {
     vec3 p = cameraPos;
     vec3 v = normalize(cameraFront + ndc.x * cameraRight + ndc.y * cameraUp);
 
-    // Test scene object (planet)
-    vec3 planetCenter = vec3(0.0, 0.0, 8.0);
-    float planetRadius = 0.5;
-
     // Raymarching loop
 	bool hit = false;
     vec4 pixelColor;
@@ -101,12 +110,16 @@ void main() {
             break;
         }
 
-        // Sphere intersection check
-		if (length(planetCenter - p) <= planetRadius) {
-			pixelColor = vec4(0.0, 1.0, 0.0, 1.0);
-			hit = true;
-			break;
+        // Planet sphere intersection checks
+		for(int i = 0; i < planets.length(); ++i){
+			Planet planet = planets[i];
+			if (length(planet.position - p) <= planet.radius) {
+				pixelColor = vec4(planet.color, 1.0);
+				hit = true;
+				break;
+			}
 		}
+		if (hit) break;
 
 		// Accretion disk check
 		if (p.y * oldP.y <= 0) {
